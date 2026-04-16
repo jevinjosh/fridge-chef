@@ -7,7 +7,7 @@ export const api = {
       method: "POST" as const,
       path: "/api/recipes/generate",
       input: z.object({
-        ingredients: z.string(),
+        dishName: z.string(),
       }),
       responses: {
         200: z.object({
@@ -17,6 +17,10 @@ export const api = {
           summary: z.string(),
           servings: z.string(),
           cookTime: z.string(),
+          imageUrl: z.string().nullable().optional(),
+          category: z.string().nullable().optional(),
+          area: z.string().nullable().optional(),
+          youtubeUrl: z.string().nullable().optional(),
         }),
         500: z.object({ message: z.string() }),
       },

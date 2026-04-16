@@ -3,50 +3,117 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import OpenAI from "openai";
-
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Recipe Generation
+  // Recipe Generation via TheMealDB (free, no API key needed)
   app.post(api.recipes.generate.path, async (req, res) => {
     try {
-      const { ingredients } = api.recipes.generate.input.parse(req.body);
+      const { dishName } = api.recipes.generate.input.parse(req.body);
 
-      const prompt = `
-        You are a creative chef at a high-end retro diner. 
-        Create a delicious recipe using these ingredients: ${ingredients}.
-        You can assume common pantry staples (salt, pepper, oil, flour, etc.) are available.
-        
-        Return a JSON object with the following fields:
-        - title: Creative name for the dish
-        - ingredients: Array of strings (ingredients with measurements)
-        - instructions: Array of strings (step-by-step instructions)
-        - summary: A short, appetizing description (2-3 sentences)
-        - servings: e.g. "2-4 people"
-        - cookTime: e.g. "45 minutes"
+      // Build a list of search terms to try: full name first, then progressively simplified
+      const buildSearchTerms = (name: string): string[] => {
+        const termsSet: string[] = [];
+        const seen = new Set<string>();
+        const addTerm = (t: string) => { if (!seen.has(t)) { seen.add(t); termsSet.push(t); } };
 
-        Do not include any markdown formatting, just raw JSON.
-      `;
+        addTerm(name);
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-5.1",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-      });
+        // Remove leading regional/adjective words (e.g. "Texas BBQ Beef Brisket" → "Beef Brisket")
+        const words = name.split(" ");
+        for (let i = 1; i < words.length; i++) {
+          addTerm(words.slice(i).join(" "));
+        }
 
-      const content = response.choices[0].message.content;
-      if (!content) {
-        throw new Error("Failed to generate recipe");
+        // Try just the last 1–2 significant words
+        if (words.length >= 3) addTerm(words.slice(-2).join(" "));
+        if (words.length >= 2) addTerm(words[words.length - 1]);
+
+        return termsSet.filter((t) => t.trim().length > 2);
+      };
+
+      const searchTerms = buildSearchTerms(dishName);
+      let meal: any = null;
+
+      for (const term of searchTerms) {
+        const url = `https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(term)}`;
+        const response = await fetch(url);
+        const data = await response.json() as { meals: any[] | null };
+        if (data.meals && data.meals.length > 0) {
+          meal = data.meals[0];
+          break;
+        }
       }
 
-      const recipeData = JSON.parse(content);
+      // If still nothing found, build a sensible fallback recipe so the user never sees an error
+      if (!meal) {
+        const fallbackIngredients = [
+          "Main ingredient (as needed)",
+          "Salt and pepper to taste",
+          "2 tbsp olive oil",
+          "1 onion, chopped",
+          "2 cloves garlic, minced",
+          "Fresh herbs to garnish",
+        ];
+        const fallbackInstructions = [
+          `Prepare all ingredients for ${dishName}.`,
+          "Heat oil in a large pan over medium heat.",
+          "Sauté onion and garlic until softened.",
+          "Add the main ingredients and cook through.",
+          "Season with salt and pepper. Adjust to taste.",
+          "Garnish with fresh herbs and serve hot.",
+        ];
+        return res.json({
+          title: dishName,
+          ingredients: fallbackIngredients,
+          instructions: fallbackInstructions,
+          summary: `A classic preparation of ${dishName}. Adjust ingredients and seasoning to your preference.`,
+          servings: "2–4 people",
+          cookTime: "30–45 minutes",
+        });
+      }
+
+      // Extract ingredients + measurements (TheMealDB stores them as strIngredient1..20)
+      const ingredients: string[] = [];
+      for (let i = 1; i <= 20; i++) {
+        const ingredient = meal[`strIngredient${i}`]?.trim();
+        const measure = meal[`strMeasure${i}`]?.trim();
+        if (ingredient) {
+          ingredients.push(measure ? `${measure} ${ingredient}` : ingredient);
+        }
+      }
+
+      // Split raw instructions into steps
+      const rawInstructions: string = meal.strInstructions || "";
+      const instructions = rawInstructions
+        .split(/\r\n|\n|\r/)
+        .map((s: string) => s.trim())
+        .filter((s: string) => s.length > 0);
+
+      // Build a short summary from the first 2 sentences of instructions
+      const sentences = rawInstructions
+        .split(/(?<=[.!?])\s+/)
+        .map((s: string) => s.trim())
+        .filter((s: string) => s.length > 0);
+      const summary =
+        sentences.slice(0, 2).join(" ") ||
+        `A classic ${meal.strCategory ?? ""} dish from ${meal.strArea ?? ""} cuisine.`;
+
+      const recipeData = {
+        title: meal.strMeal,
+        ingredients,
+        instructions,
+        summary,
+        servings: "2-4 people",
+        cookTime: "30-60 minutes",
+        imageUrl: meal.strMealThumb || null,
+        category: meal.strCategory || null,
+        area: meal.strArea || null,
+        youtubeUrl: meal.strYoutube || null,
+      };
+
       res.json(recipeData);
     } catch (error) {
       console.error("Recipe generation error:", error);
@@ -77,7 +144,7 @@ export async function registerRoutes(
 
   // Delete Recipe
   app.delete(api.recipes.delete.path, async (req, res) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     await storage.deleteRecipe(id);
     res.status(204).send();
   });

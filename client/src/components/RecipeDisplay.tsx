@@ -1,21 +1,25 @@
 import { motion } from "framer-motion";
 import { type InsertRecipe } from "@shared/schema";
-import { Clock, Users, ChefHat, Save, RefreshCw } from "lucide-react";
+import { Clock, Users, ChefHat, Save, RefreshCw, MapPin, Tag, Youtube, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface RecipeDisplayProps {
-  recipe: InsertRecipe;
+  recipe: InsertRecipe & {
+    imageUrl?: string | null;
+    category?: string | null;
+    area?: string | null;
+    youtubeUrl?: string | null;
+  };
   onSave: () => void;
   isSaving: boolean;
   onReset: () => void;
 }
 
 export function RecipeDisplay({ recipe, onSave, isSaving, onReset }: RecipeDisplayProps) {
-  // Safe parsing for JSON fields in case they come as strings
-  const ingredients = Array.isArray(recipe.ingredients) 
-    ? recipe.ingredients 
+  const ingredients = Array.isArray(recipe.ingredients)
+    ? recipe.ingredients
     : JSON.parse(recipe.ingredients as unknown as string);
-    
+
   const instructions = Array.isArray(recipe.instructions)
     ? recipe.instructions
     : JSON.parse(recipe.instructions as unknown as string);
@@ -25,103 +29,221 @@ export function RecipeDisplay({ recipe, onSave, isSaving, onReset }: RecipeDispl
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
-      className="max-w-3xl mx-auto"
+      className="max-w-4xl mx-auto pb-12"
     >
-      <div className="paper-card p-8 md:p-12 relative">
-        {/* Ribbon decoration */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="bg-secondary text-background px-6 py-2 shadow-lg rounded-sm font-typewriter font-bold text-sm tracking-widest uppercase border border-primary/20">
-            Daily Special
+      {/* Hero Image + Title */}
+      <div className="relative rounded-2xl overflow-hidden mb-8 shadow-xl" style={{ minHeight: 260 }}>
+        {recipe.imageUrl ? (
+          <img
+            src={recipe.imageUrl}
+            alt={recipe.title}
+            className="w-full object-cover"
+            style={{ maxHeight: 420, width: "100%", objectPosition: "center" }}
+          />
+        ) : (
+          <div
+            className="w-full flex items-center justify-center"
+            style={{ height: 260, background: "linear-gradient(135deg, hsl(35,35%,93%), hsl(35,30%,88%))" }}
+          >
+            <ChefHat className="w-24 h-24" style={{ color: "hsla(18,75%,48%,0.25)" }} />
           </div>
-        </div>
+        )}
+        {/* Gradient overlay */}
+        <div
+          className="absolute inset-0"
+          style={{ background: "linear-gradient(to top, hsla(20,25%,10%,0.85) 0%, hsla(20,25%,10%,0.35) 55%, transparent 100%)" }}
+        />
 
-        {/* Header */}
-        <div className="text-center mb-10 mt-4">
-          <h1 className="text-4xl md:text-5xl lg:text-6xl text-primary mb-4 leading-tight">
+        {/* Title overlay */}
+        <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8">
+          <div className="flex flex-wrap gap-2 mb-3">
+            {recipe.area && (
+              <span
+                className="flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full"
+                style={{ background: "hsla(18,75%,55%,0.85)", color: "white" }}
+              >
+                <MapPin className="w-3 h-3" /> {recipe.area} Cuisine
+              </span>
+            )}
+            {recipe.category && (
+              <span
+                className="flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full"
+                style={{ background: "hsla(142,45%,42%,0.85)", color: "white" }}
+              >
+                <Tag className="w-3 h-3" /> {recipe.category}
+              </span>
+            )}
+          </div>
+          <h1
+            className="text-3xl md:text-5xl font-bold leading-tight text-white"
+            style={{ fontFamily: "var(--font-display)", textShadow: "0 2px 12px rgba(0,0,0,0.4)" }}
+          >
             {recipe.title}
           </h1>
-          <div className="flex justify-center gap-6 text-sm font-typewriter text-muted-foreground uppercase tracking-wider">
-            {recipe.cookTime && (
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-secondary" />
-                {recipe.cookTime}
-              </div>
-            )}
-            {recipe.servings && (
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-secondary" />
-                {recipe.servings}
-              </div>
-            )}
-          </div>
-          <p className="mt-6 text-lg italic text-foreground/80 max-w-xl mx-auto leading-relaxed border-b-2 border-double border-primary/10 pb-6">
-            "{recipe.summary}"
-          </p>
         </div>
+      </div>
 
-        <div className="grid md:grid-cols-[1fr,1.5fr] gap-12">
-          {/* Ingredients Column */}
-          <div className="space-y-6">
-            <h3 className="text-xl font-bold border-b border-primary/20 pb-2 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-secondary" />
-              Ingredients
-            </h3>
-            <ul className="space-y-3 font-typewriter text-sm md:text-base text-foreground/90">
-              {ingredients.map((ing: string, i: number) => (
-                <li key={i} className="flex gap-3 leading-relaxed">
-                  <span className="text-secondary select-none">•</span>
-                  {ing}
-                </li>
-              ))}
-            </ul>
+      {/* Meta row */}
+      <div className="flex flex-wrap items-center gap-5 mb-6 px-1">
+        {recipe.cookTime && (
+          <div className="flex items-center gap-2 text-sm font-medium" style={{ color: "hsl(20,15%,45%)" }}>
+            <Clock className="w-4 h-4" style={{ color: "hsl(18,75%,48%)" }} />
+            {recipe.cookTime}
           </div>
-
-          {/* Instructions Column */}
-          <div className="space-y-6">
-            <h3 className="text-xl font-bold border-b border-primary/20 pb-2 flex items-center gap-2">
-              <ChefHat className="w-5 h-5 text-secondary" />
-              Preparation
-            </h3>
-            <div className="space-y-6">
-              {instructions.map((step: string, i: number) => (
-                <div key={i} className="group">
-                  <div className="flex gap-4">
-                    <span className="font-display font-bold text-2xl text-primary/30 group-hover:text-secondary transition-colors">
-                      {(i + 1).toString().padStart(2, '0')}
-                    </span>
-                    <p className="text-foreground/90 leading-relaxed pt-1">
-                      {step}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+        )}
+        {recipe.servings && (
+          <div className="flex items-center gap-2 text-sm font-medium" style={{ color: "hsl(20,15%,45%)" }}>
+            <Users className="w-4 h-4" style={{ color: "hsl(18,75%,48%)" }} />
+            {recipe.servings}
           </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="mt-12 pt-8 border-t border-dashed border-primary/20 flex flex-col sm:flex-row gap-4 justify-center">
-          <Button
-            onClick={onSave}
-            disabled={isSaving}
-            className="h-12 px-8 bg-primary hover:bg-primary/90 text-primary-foreground font-display font-bold tracking-wide text-lg shadow-lg hover:shadow-xl transition-all"
+        )}
+        {recipe.youtubeUrl && (
+          <a
+            href={recipe.youtubeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-sm font-semibold ml-auto px-4 py-1.5 rounded-full transition-all hover:opacity-90"
+            style={{
+              background: "hsla(0,85%,55%,0.1)",
+              color: "hsl(0,72%,48%)",
+              border: "1px solid hsla(0,72%,55%,0.25)",
+            }}
           >
-            {isSaving ? (
-              <span className="flex items-center gap-2">Saving...</span>
-            ) : (
-              <span className="flex items-center gap-2"><Save className="w-5 h-5" /> Save to Cookbook</span>
-            )}
-          </Button>
-          
-          <Button
-            onClick={onReset}
-            variant="outline"
-            className="h-12 px-8 border-2 border-primary/20 text-primary hover:bg-primary/5 hover:text-primary font-display font-bold tracking-wide text-lg"
+            <Youtube className="w-4 h-4" /> Watch on YouTube
+          </a>
+        )}
+      </div>
+
+      {/* Summary */}
+      <div
+        className="mb-8 p-5 rounded-2xl"
+        style={{ background: "hsla(18,75%,48%,0.06)", border: "1px solid hsla(18,75%,48%,0.15)" }}
+      >
+        <p className="text-base md:text-lg italic leading-relaxed" style={{ color: "hsl(20,20%,38%)" }}>
+          "{recipe.summary}"
+        </p>
+      </div>
+
+      {/* Two-column layout */}
+      <div className="grid md:grid-cols-[1fr,1.7fr] gap-6">
+
+        {/* Ingredients */}
+        <div className="paper-card p-6">
+          <h3
+            className="flex items-center gap-2 text-lg font-bold mb-5 pb-3"
+            style={{
+              color: "hsl(18,75%,42%)",
+              borderBottom: "2px solid hsl(35,20%,90%)",
+              fontFamily: "var(--font-display)",
+            }}
           >
-            <RefreshCw className="w-5 h-5 mr-2" />
-            Create Another
-          </Button>
+            <ChefHat className="w-5 h-5" />
+            Ingredients
+            <span
+              className="ml-auto text-xs font-normal px-2 py-0.5 rounded-full"
+              style={{ background: "hsl(35,30%,93%)", color: "hsl(20,15%,50%)" }}
+            >
+              {ingredients.length} items
+            </span>
+          </h3>
+          <ul className="space-y-2.5">
+            {ingredients.map((ing: string, i: number) => (
+              <motion.li
+                key={i}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.035 }}
+                className="flex items-start gap-3 text-sm leading-relaxed"
+                style={{ fontFamily: "var(--font-typewriter)", color: "hsl(20,20%,30%)" }}
+              >
+                <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "hsl(142,45%,42%)" }} />
+                {ing}
+              </motion.li>
+            ))}
+          </ul>
         </div>
+
+        {/* Instructions */}
+        <div className="paper-card p-6">
+          <h3
+            className="flex items-center gap-2 text-lg font-bold mb-5 pb-3"
+            style={{
+              color: "hsl(18,75%,42%)",
+              borderBottom: "2px solid hsl(35,20%,90%)",
+              fontFamily: "var(--font-display)",
+            }}
+          >
+            Step-by-Step Preparation
+            <span
+              className="ml-auto text-xs font-normal px-2 py-0.5 rounded-full"
+              style={{ background: "hsl(35,30%,93%)", color: "hsl(20,15%,50%)" }}
+            >
+              {instructions.length} steps
+            </span>
+          </h3>
+          <div className="space-y-3">
+            {instructions.map((step: string, i: number) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.04 }}
+                className="flex gap-4 p-4 rounded-xl transition-all"
+                style={{
+                  background: "hsl(35,35%,97%)",
+                  borderLeft: "3px solid hsl(18,75%,52%)",
+                }}
+              >
+                <span
+                  className="font-bold text-xl flex-shrink-0 leading-none mt-0.5"
+                  style={{ color: "hsl(18,75%,52%)", minWidth: 28, fontFamily: "var(--font-display)" }}
+                >
+                  {(i + 1).toString().padStart(2, "0")}
+                </span>
+                <p className="text-sm md:text-base leading-relaxed" style={{ color: "hsl(20,20%,28%)" }}>
+                  {step}
+                </p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+        <Button
+          onClick={onSave}
+          disabled={isSaving}
+          className="h-12 px-8 text-base font-bold tracking-wide rounded-xl transition-all btn-glow"
+          style={{
+            background: "linear-gradient(135deg, hsl(18,75%,50%), hsl(18,75%,40%))",
+            color: "white",
+            border: "none",
+            fontFamily: "var(--font-display)",
+          }}
+        >
+          {isSaving ? (
+            <span className="flex items-center gap-2">Saving...</span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <Save className="w-5 h-5" /> Save to Cookbook
+            </span>
+          )}
+        </Button>
+
+        <Button
+          onClick={onReset}
+          variant="outline"
+          className="h-12 px-8 text-base font-bold tracking-wide rounded-xl transition-all"
+          style={{
+            background: "white",
+            border: "2px solid hsl(35,20%,85%)",
+            color: "hsl(20,25%,25%)",
+            fontFamily: "var(--font-display)",
+          }}
+        >
+          <RefreshCw className="w-5 h-5 mr-2" /> Try Another Dish
+        </Button>
       </div>
     </motion.div>
   );

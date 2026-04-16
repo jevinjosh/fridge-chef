@@ -146,7 +146,7 @@ function CookbookItem({ recipe, index }: { recipe: Recipe; index: number }) {
                     <div>
                       <h4 className="font-bold font-display text-lg mb-2 text-foreground">Ingredients</h4>
                       <ul className="space-y-1 font-typewriter text-sm">
-                        {ingredients.map((ing, i) => (
+                        {ingredients.map((ing: string, i: number) => (
                           <li key={i} className="flex gap-2">
                             <span className="text-secondary">•</span> {ing}
                           </li>

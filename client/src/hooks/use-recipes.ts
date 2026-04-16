@@ -22,8 +22,8 @@ export function useGenerateRecipe() {
   const { toast } = useToast();
   
   return useMutation({
-    mutationFn: async (ingredients: string) => {
-      const validated = api.recipes.generate.input.parse({ ingredients });
+    mutationFn: async (dishName: string) => {
+      const validated = api.recipes.generate.input.parse({ dishName });
       
       const res = await fetch(api.recipes.generate.path, {
         method: api.recipes.generate.method,
