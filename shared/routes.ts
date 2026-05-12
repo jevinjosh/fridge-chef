@@ -3,6 +3,22 @@ import { insertRecipeSchema, recipes } from "./schema";
 
 export const api = {
   recipes: {
+    search: {
+      method: "GET" as const,
+      path: "/api/recipes/search",
+      responses: {
+        200: z.object({
+          options: z.array(
+            z.object({
+              name: z.string(),
+              imageUrl: z.string().nullable().optional(),
+              category: z.string().nullable().optional(),
+              area: z.string().nullable().optional(),
+            })
+          ),
+        }),
+      },
+    },
     generate: {
       method: "POST" as const,
       path: "/api/recipes/generate",

@@ -24,6 +24,15 @@ export function RecipeDisplay({ recipe, onSave, isSaving, onReset }: RecipeDispl
     ? recipe.instructions
     : JSON.parse(recipe.instructions as unknown as string);
 
+  // Convert watch URL → embed URL for inline iframe player
+  const ytWatchUrl = recipe.youtubeUrl ?? null;
+  const ytEmbedUrl = ytWatchUrl
+    ? (() => {
+        const m = ytWatchUrl.match(/[?&]v=([^&]+)/);
+        return m?.[1] ? `https://www.youtube.com/embed/${m[1]}?rel=0&modestbranding=1` : null;
+      })()
+    : null;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -97,9 +106,9 @@ export function RecipeDisplay({ recipe, onSave, isSaving, onReset }: RecipeDispl
             {recipe.servings}
           </div>
         )}
-        {recipe.youtubeUrl && (
+        {ytWatchUrl && (
           <a
-            href={recipe.youtubeUrl}
+            href={ytWatchUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 text-sm font-semibold ml-auto px-4 py-1.5 rounded-full transition-all hover:opacity-90"
@@ -109,7 +118,7 @@ export function RecipeDisplay({ recipe, onSave, isSaving, onReset }: RecipeDispl
               border: "1px solid hsla(0,72%,55%,0.25)",
             }}
           >
-            <Youtube className="w-4 h-4" /> Watch on YouTube
+            <Youtube className="w-4 h-4" /> Open on YouTube
           </a>
         )}
       </div>
@@ -123,6 +132,41 @@ export function RecipeDisplay({ recipe, onSave, isSaving, onReset }: RecipeDispl
           "{recipe.summary}"
         </p>
       </div>
+
+      {/* YouTube — embedded inline video player */}
+      {ytEmbedUrl && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3
+              className="flex items-center gap-2 text-lg font-bold"
+              style={{ color: "hsl(18,75%,42%)", fontFamily: "var(--font-display)" }}
+            >
+              <Youtube className="w-5 h-5" style={{ color: "hsl(0,72%,48%)" }} />
+              Watch How To Make It
+            </h3>
+          </div>
+          {/* 16:9 iframe player — plays the video directly on the page */}
+          <div
+            className="rounded-2xl overflow-hidden shadow-xl"
+            style={{ position: "relative", paddingTop: "56.25%", border: "2px solid hsla(0,72%,55%,0.18)" }}
+          >
+            <iframe
+              src={ytEmbedUrl}
+              title={`${recipe.title} Recipe Video`}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                border: "none",
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Two-column layout */}
       <div className="grid md:grid-cols-[1fr,1.7fr] gap-6">

@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Navigation } from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useGenerateRecipe, useSaveRecipe } from "@/hooks/use-recipes";
+import { useGenerateRecipe, useSaveRecipe, useSearchRecipes, type DishOption } from "@/hooks/use-recipes";
 import { RecipeDisplay } from "@/components/RecipeDisplay";
-import { Sparkles, Search, ChefHat, Loader2, ArrowDown, Star, Clock, Users } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Sparkles, Search, ChefHat, Loader2, ArrowDown, Star, Clock, Users, ArrowLeft } from "lucide-react";
+import { motion, AnimatePresence, useScroll, useTransform, useSpring } from "framer-motion";
 import { type InsertRecipe } from "@shared/schema";
 
 const DISH_SUGGESTIONS = [
@@ -74,7 +74,7 @@ const DISH_SUGGESTIONS = [
   },
   {
     name: "Fish and Chips",
-    emoji: "🐟",
+    emoji: "🍟",
     image: "https://images.unsplash.com/photo-1600891964092-4316c288032e?w=600&q=80",
     time: "35 min",
     servings: 4,
@@ -120,13 +120,34 @@ const DISH_SUGGESTIONS = [
 ];
 
 const cardVariants = {
-  hidden: { opacity: 0, scale: 0.92, y: 20 },
+  hidden: { opacity: 0, y: 50 },
   visible: (i: number) => ({
     opacity: 1,
-    scale: 1,
     y: 0,
-    transition: { delay: i * 0.06, duration: 0.4, ease: "easeOut" },
+    transition: {
+      delay: (i % 4) * 0.1,
+      duration: 0.8,
+      ease: [0.25, 1, 0.5, 1] // Buttery smooth ease-out
+    },
   }),
+  hover: {
+    y: -6,
+    scale: 1.02,
+    boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
+    transition: { duration: 0.4, ease: "easeOut" }
+  }
+};
+
+const imageVariants = {
+  hidden: { scale: 1.15 },
+  visible: {
+    scale: 1,
+    transition: { duration: 1.6, ease: [0.25, 1, 0.5, 1] }
+  },
+  hover: {
+    scale: 1.05,
+    transition: { duration: 0.5, ease: "easeOut" }
+  }
 };
 
 const HERO_STATS = [
@@ -137,6 +158,7 @@ const HERO_STATS = [
 
 export default function Home() {
   const [dishName, setDishName] = useState("");
+  const [searchQuery, setSearchQuery] = useState(""); // committed query for the search hook
   const [loadingDish, setLoadingDish] = useState<string | null>(null);
   const [generatedRecipe, setGeneratedRecipe] = useState<
     (InsertRecipe & {
@@ -146,10 +168,31 @@ export default function Home() {
       youtubeUrl?: string | null;
     }) | null
   >(null);
+  const [showVarieties, setShowVarieties] = useState(false); // true when showing option-selection screen
+
+  // ── Scroll-driven 3D animation hooks ──
+  const { scrollY, scrollYProgress } = useScroll();
+  const smoothProgress = useSpring(scrollYProgress, { stiffness: 120, damping: 25 });
+  const heroImgY = useTransform(scrollY, [0, 700], [0, 200]);       // parallax: bg moves slower
+  const heroContentY = useTransform(scrollY, [0, 500], [0, -55]);   // content lifts on scroll
+  const heroOpacity = useTransform(scrollY, [0, 380], [1, 0.45]);  // hero fades as scrolled
 
   const generateMutation = useGenerateRecipe();
   const saveMutation = useSaveRecipe();
+  const searchResult = useSearchRecipes(searchQuery);
 
+  // Step 1: user presses "Get Recipe" → search for varieties
+  const handleGenerate = () => {
+    if (!dishName.trim()) return;
+    setSearchQuery(dishName.trim());
+    setShowVarieties(true);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") handleGenerate();
+  };
+
+  // Step 2: user picks a specific variety → generate the full recipe
   const triggerGenerate = (name: string) => {
     if (!name.trim()) return;
     setLoadingDish(name);
@@ -164,15 +207,10 @@ export default function Home() {
           youtubeUrl: (data as any).youtubeUrl ?? null,
         });
         setLoadingDish(null);
+        setShowVarieties(false);
       },
       onError: () => setLoadingDish(null),
     });
-  };
-
-  const handleGenerate = () => triggerGenerate(dishName);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") handleGenerate();
   };
 
   const handleSave = () => {
@@ -184,6 +222,8 @@ export default function Home() {
     setGeneratedRecipe(null);
     setDishName("");
     setLoadingDish(null);
+    setShowVarieties(false);
+    setSearchQuery("");
   };
 
   const scrollToContent = () => {
@@ -192,661 +232,26 @@ export default function Home() {
 
   return (
     <div className="min-h-screen" style={{ background: "hsl(36,40%,97%)" }}>
+      {/* ── Fixed scroll progress bar ── */}
+      <motion.div
+        style={{
+          scaleX: smoothProgress,
+          transformOrigin: "left",
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 3,
+          background: "linear-gradient(90deg, hsl(18,82%,54%), hsl(38,95%,52%), hsl(18,82%,54%))",
+          zIndex: 9999,
+          boxShadow: "0 0 12px hsla(18,82%,54%,0.6)",
+        }}
+      />
       <Navigation />
 
       <AnimatePresence mode="wait">
-        {!generatedRecipe ? (
-          <motion.div
-            key="input"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, y: -16 }}
-            transition={{ duration: 0.4 }}
-          >
-            {/* ════════════════ HERO SECTION ════════════════ */}
-            <section
-              style={{
-                minHeight: "91vh",
-                position: "relative",
-                overflow: "hidden",
-                display: "flex",
-                alignItems: "center",
-                background: "hsl(36,40%,97%)",
-              }}
-            >
-              {/* Warm ambient blobs */}
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  pointerEvents: "none",
-                  background: `
-                    radial-gradient(ellipse 860px 640px at 85% 50%, hsla(18,85%,55%,0.09) 0%, transparent 65%),
-                    radial-gradient(ellipse 500px 400px at 8% 75%, hsla(38,95%,58%,0.07) 0%, transparent 60%),
-                    radial-gradient(ellipse 380px 300px at 45% 0%, hsla(35,60%,75%,0.12) 0%, transparent 55%)
-                  `,
-                }}
-              />
-
-              <div
-                style={{
-                  maxWidth: 1240,
-                  margin: "0 auto",
-                  padding: "72px 32px 96px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 72,
-                  width: "100%",
-                }}
-              >
-                {/* ── LEFT: content ── */}
-                <motion.div
-                  initial={{ opacity: 0, x: -28 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.65, ease: "easeOut" }}
-                  style={{ flex: "1 1 0", display: "flex", flexDirection: "column" }}
-                >
-                  {/* Badge */}
-                  <motion.div
-                    initial={{ opacity: 0, y: -12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1, duration: 0.5 }}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "7px 18px",
-                      borderRadius: 999,
-                      background: "hsla(18,75%,52%,0.1)",
-                      border: "1.5px solid hsla(18,75%,52%,0.25)",
-                      marginBottom: 28,
-                      width: "fit-content",
-                    }}
-                  >
-                    <span
-                      style={{
-                        width: 7,
-                        height: 7,
-                        borderRadius: "50%",
-                        background: "hsl(18,75%,52%)",
-                        flexShrink: 0,
-                        boxShadow: "0 0 6px hsl(18,75%,52%)",
-                      }}
-                    />
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "hsl(18,65%,40%)",
-                        fontFamily: "var(--font-typewriter)",
-                        letterSpacing: "0.12em",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      World Kitchen &nbsp;·&nbsp; 50+ Cuisines &nbsp;·&nbsp; 10K+ Recipes
-                    </span>
-                  </motion.div>
-
-                  {/* Logo icon */}
-                  <motion.div
-                    initial={{ scale: 0.75, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 0.15, duration: 0.55, type: "spring", stiffness: 200 }}
-                    style={{
-                      width: 68,
-                      height: 68,
-                      borderRadius: 18,
-                      background: "linear-gradient(135deg, hsl(18,82%,54%), hsl(18,75%,42%))",
-                      boxShadow: "0 8px 28px hsla(18,75%,50%,0.38)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginBottom: 28,
-                    }}
-                  >
-                    <ChefHat style={{ width: 34, height: 34, color: "white" }} />
-                  </motion.div>
-
-                  {/* H1 Headline */}
-                  <motion.h1
-                    initial={{ opacity: 0, y: 22 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2, duration: 0.6 }}
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      fontSize: "clamp(2.9rem, 5.5vw, 5rem)",
-                      fontWeight: 800,
-                      lineHeight: 1.04,
-                      letterSpacing: "-0.03em",
-                      marginBottom: 22,
-                    }}
-                  >
-                    <span style={{ color: "hsl(20,25%,12%)", display: "block" }}>
-                      Your Personal
-                    </span>
-                    <span
-                      style={{
-                        display: "block",
-                        background: "linear-gradient(108deg, hsl(18,82%,50%) 0%, hsl(26,90%,54%) 45%, hsl(38,95%,52%) 100%)",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                        backgroundClip: "text",
-                        filter: "drop-shadow(0 2px 12px hsla(18,80%,52%,0.22))",
-                      }}
-                    >
-                      Fridge Chef
-                    </span>
-                  </motion.h1>
-
-                  {/* Subtitle */}
-                  <motion.p
-                    initial={{ opacity: 0, y: 16 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3, duration: 0.5 }}
-                    style={{
-                      color: "hsl(20,15%,44%)",
-                      fontFamily: "var(--font-body)",
-                      fontSize: "1.08rem",
-                      lineHeight: 1.78,
-                      maxWidth: 430,
-                      marginBottom: 36,
-                    }}
-                  >
-                    Search any dish and get the full recipe — step-by-step instructions,
-                    curated photos &amp; videos,{" "}
-                    <strong style={{ color: "hsl(18,75%,46%)", fontWeight: 600 }}>instantly</strong>.
-                  </motion.p>
-
-                  {/* Search bar */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 18 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4, duration: 0.5 }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "6px 6px 6px 18px",
-                      borderRadius: 16,
-                      background: "white",
-                      border: "1.5px solid hsl(35,20%,86%)",
-                      boxShadow: "0 4px 24px hsla(20,20%,15%,0.08), 0 1px 4px hsla(20,20%,15%,0.04)",
-                      maxWidth: 500,
-                    }}
-                  >
-                    <Search style={{ width: 19, height: 19, color: "hsl(18,75%,52%)", flexShrink: 0 }} />
-                    <Input
-                      id="dishNameHero"
-                      placeholder="e.g., Pasta Carbonara, Sushi, Jollof Rice..."
-                      className="border-0 bg-transparent focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-1 text-base"
-                      style={{
-                        color: "hsl(20,25%,15%)",
-                        fontFamily: "var(--font-typewriter)",
-                        caretColor: "hsl(18,75%,52%)",
-                        padding: "10px 12px",
-                      }}
-                      value={dishName}
-                      onChange={(e) => setDishName(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                    />
-                    <Button
-                      size="lg"
-                      onClick={handleGenerate}
-                      disabled={generateMutation.isPending || !dishName.trim()}
-                      style={{
-                        background:
-                          generateMutation.isPending || !dishName.trim()
-                            ? "hsl(35,20%,90%)"
-                            : "linear-gradient(135deg, hsl(18,82%,54%), hsl(18,75%,44%))",
-                        color:
-                          generateMutation.isPending || !dishName.trim()
-                            ? "hsl(20,15%,55%)"
-                            : "white",
-                        border: "none",
-                        borderRadius: 12,
-                        fontFamily: "var(--font-display)",
-                        fontWeight: 700,
-                        minWidth: 132,
-                        boxShadow: dishName.trim() ? "0 4px 20px hsla(18,75%,48%,0.38)" : "none",
-                        transition: "all 0.25s",
-                        padding: "10px 20px",
-                      }}
-                    >
-                      {generateMutation.isPending && loadingDish === dishName ? (
-                        <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                          <Loader2 style={{ width: 17, height: 17 }} className="animate-spin" /> Fetching…
-                        </span>
-                      ) : (
-                        <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                          <Sparkles style={{ width: 17, height: 17 }} /> Get Recipe
-                        </span>
-                      )}
-                    </Button>
-                  </motion.div>
-
-                  {/* Stats row */}
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.55, duration: 0.5 }}
-                    style={{ display: "flex", gap: 36, marginTop: 36 }}
-                  >
-                    {HERO_STATS.map((stat, i) => (
-                      <div key={i}>
-                        <div
-                          style={{
-                            fontFamily: "var(--font-display)",
-                            fontSize: "1.65rem",
-                            fontWeight: 800,
-                            color: "hsl(18,75%,48%)",
-                            letterSpacing: "-0.025em",
-                          }}
-                        >
-                          {stat.value}
-                        </div>
-                        <div
-                          style={{
-                            fontFamily: "var(--font-typewriter)",
-                            fontSize: "0.68rem",
-                            color: "hsl(20,12%,56%)",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.11em",
-                            marginTop: 3,
-                          }}
-                        >
-                          {stat.label}
-                        </div>
-                      </div>
-                    ))}
-                  </motion.div>
-                </motion.div>
-
-                {/* ── RIGHT: empty spacer to keep left text exactly where it is ── */}
-                <div className="hidden md:block" style={{ flex: "1 1 0" }} />
-              </div>
-
-              {/* ── ENLARGED RIGHT HERO IMAGE (Bleeds to edge) ── */}
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.18, duration: 0.7, ease: "easeOut" }}
-                className="hidden md:block"
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  right: 0,
-                  bottom: 0,
-                  width: "50vw", // Enlarge to cover the exact right half of the screen
-                  zIndex: 0,
-                }}
-              >
-                {/* Main image spanning full height */}
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    overflow: "hidden",
-                    position: "relative",
-                  }}
-                >
-                  <img
-                    src="https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1200&q=90"
-                    alt="Gourmet kitchen"
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                  {/* Subtle fade to blend perfectly with the cream background on the left seam */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      background: "linear-gradient(90deg, hsl(36,40%,97%) 0%, transparent 8%, transparent 100%)",
-                    }}
-                  />
-                  {/* Fade at the top to blend seamlessly with the navigation header */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      background: "linear-gradient(180deg, hsl(36,40%,97%) 0%, transparent 18%, transparent 100%)",
-                    }}
-                  />
-                </div>
-
-              </motion.div>
-
-              {/* Scroll indicator */}
-              <motion.button
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.85, duration: 0.5 }}
-                onClick={scrollToContent}
-                style={{
-                  position: "absolute",
-                  bottom: 32,
-                  left: "25%", /* Centered perfectly under the left text column */
-                  transform: "translateX(-50%)",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "12px 24px",
-                  background: "white",
-                  borderRadius: 999,
-                  boxShadow: "0 8px 24px hsla(20,25%,15%,0.08)",
-                  border: "1px solid hsl(35,20%,91%)",
-                  cursor: "pointer",
-                  color: "hsl(18,75%,48%)",
-                  zIndex: 20,
-                }}
-              >
-                <span style={{ fontFamily: "var(--font-typewriter)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em" }}>
-                  Discover Dishes
-                </span>
-                <motion.div animate={{ y: [0, 4, 0] }} transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}>
-                  <ArrowDown style={{ width: 15, height: 15 }} />
-                </motion.div>
-              </motion.button>
-            </section>
-
-            {/* ════════════════ DISCOVER SECTION ════════════════ */}
-            <section
-              id="discover-section"
-              style={{ background: "hsl(36,35%,93%)", padding: "80px 0 96px" }}
-            >
-              <div style={{ maxWidth: 1280, margin: "0 auto", padding: "0 28px" }}>
-                {/* Section header */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.5 }}
-                  style={{ textAlign: "center", marginBottom: 52 }}
-                >
-                  <p
-                    style={{
-                      fontFamily: "var(--font-typewriter)",
-                      fontSize: 11,
-                      color: "hsl(18,75%,48%)",
-                      fontWeight: 700,
-                      letterSpacing: "0.16em",
-                      textTransform: "uppercase",
-                      marginBottom: 12,
-                    }}
-                  >
-                    ✦ Handpicked Favourites
-                  </p>
-                  <h2
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      fontSize: "clamp(1.9rem, 3.8vw, 2.9rem)",
-                      fontWeight: 800,
-                      color: "hsl(20,25%,12%)",
-                      letterSpacing: "-0.025em",
-                      marginBottom: 10,
-                    }}
-                  >
-                    Popular Dishes
-                  </h2>
-                  <p style={{ color: "hsl(20,12%,52%)", fontFamily: "var(--font-body)", fontSize: "1rem" }}>
-                    Tap any dish below to instantly get the full recipe
-                  </p>
-                </motion.div>
-
-                {/* Cards grid */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-                    gap: 24,
-                  }}
-                >
-                  {DISH_SUGGESTIONS.map((dish, i) => {
-                    const isLoading = loadingDish === dish.name;
-                    return (
-                      <motion.button
-                        key={dish.name}
-                        custom={i}
-                        variants={cardVariants}
-                        initial="hidden"
-                        whileInView="visible"
-                        viewport={{ once: true, margin: "-40px" }}
-                        whileHover={!loadingDish ? { y: -7, scale: 1.02 } : {}}
-                        whileTap={!loadingDish ? { scale: 0.97 } : {}}
-                        onClick={() => !loadingDish && triggerGenerate(dish.name)}
-                        disabled={!!loadingDish}
-                        style={{
-                          background: "white",
-                          border: isLoading
-                            ? "2px solid hsl(18,75%,52%)"
-                            : "1.5px solid hsl(35,20%,88%)",
-                          borderRadius: 22,
-                          overflow: "hidden",
-                          textAlign: "left",
-                          cursor: loadingDish ? "not-allowed" : "pointer",
-                          opacity: loadingDish && !isLoading ? 0.5 : 1,
-                          boxShadow: isLoading
-                            ? "0 0 0 4px hsla(18,75%,52%,0.15), 0 12px 36px hsla(18,75%,40%,0.18)"
-                            : "0 2px 12px hsla(20,20%,15%,0.07), 0 1px 4px hsla(20,20%,15%,0.04)",
-                          transition: "box-shadow 0.3s, border-color 0.3s, opacity 0.3s",
-                        }}
-                      >
-                        {/* Image area */}
-                        <div style={{ position: "relative", paddingTop: "65%", overflow: "hidden" }}>
-                          <img
-                            src={dish.image}
-                            alt={dish.name}
-                            style={{
-                              position: "absolute",
-                              inset: 0,
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
-                              transition: "transform 0.65s ease",
-                            }}
-                            onMouseEnter={(e) =>
-                              !loadingDish && ((e.currentTarget as HTMLElement).style.transform = "scale(1.1)")
-                            }
-                            onMouseLeave={(e) =>
-                              ((e.currentTarget as HTMLElement).style.transform = "scale(1)")
-                            }
-                          />
-                          {/* Bottom scrim for dish name readability */}
-                          <div
-                            style={{
-                              position: "absolute",
-                              inset: 0,
-                              background: isLoading
-                                ? "hsla(18,60%,95%,0.5)"
-                                : "linear-gradient(to top, rgba(20,14,10,0.72) 0%, rgba(20,14,10,0.18) 45%, transparent 100%)",
-                              transition: "background 0.3s",
-                            }}
-                          />
-
-                          {/* Category badge */}
-                          {!isLoading && (
-                            <div
-                              style={{
-                                position: "absolute",
-                                top: 12,
-                                left: 12,
-                                padding: "4px 12px",
-                                borderRadius: 999,
-                                background: "rgba(255,255,255,0.92)",
-                                backdropFilter: "blur(10px)",
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: "hsl(18,72%,44%)",
-                                fontFamily: "var(--font-typewriter)",
-                                letterSpacing: "0.07em",
-                                textTransform: "uppercase",
-                                border: "1px solid hsla(18,60%,60%,0.2)",
-                                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                              }}
-                            >
-                              {dish.category}
-                            </div>
-                          )}
-
-                          {/* Rating badge */}
-                          {!isLoading && (
-                            <div
-                              style={{
-                                position: "absolute",
-                                top: 12,
-                                right: 12,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                                padding: "4px 10px",
-                                borderRadius: 999,
-                                background: "rgba(255,255,255,0.92)",
-                                backdropFilter: "blur(10px)",
-                                boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                              }}
-                            >
-                              <Star style={{ width: 11, height: 11, color: "hsl(38,90%,48%)", fill: "hsl(38,90%,48%)" }} />
-                              <span style={{ fontSize: 12, fontWeight: 700, color: "hsl(20,25%,15%)", fontFamily: "var(--font-typewriter)" }}>
-                                {dish.rating}
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Loading spinner */}
-                          {isLoading && (
-                            <div
-                              style={{
-                                position: "absolute",
-                                inset: 0,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  width: 52,
-                                  height: 52,
-                                  borderRadius: 14,
-                                  background: "rgba(255,255,255,0.9)",
-                                  backdropFilter: "blur(8px)",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  boxShadow: "0 6px 24px hsla(18,75%,40%,0.2)",
-                                }}
-                              >
-                                <Loader2 style={{ width: 26, height: 26, color: "hsl(18,75%,48%)" }} className="animate-spin" />
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Dish name overlay */}
-                          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "12px 14px" }}>
-                            <p
-                              style={{
-                                color: "white",
-                                fontFamily: "var(--font-display)",
-                                fontWeight: 800,
-                                fontSize: "1.05rem",
-                                letterSpacing: "-0.01em",
-                                textShadow: "0 2px 12px rgba(0,0,0,0.7)",
-                              }}
-                            >
-                              {dish.emoji} {dish.name}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Card footer */}
-                        <div
-                          style={{
-                            padding: "12px 14px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            background: "white",
-                            borderTop: "1px solid hsl(35,20%,92%)",
-                          }}
-                        >
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <span
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 5,
-                                padding: "4px 10px",
-                                borderRadius: 999,
-                                background: "hsl(35,30%,95%)",
-                                border: "1px solid hsl(35,20%,88%)",
-                                fontSize: 11,
-                                fontWeight: 600,
-                                color: "hsl(20,20%,44%)",
-                                fontFamily: "var(--font-typewriter)",
-                              }}
-                            >
-                              <Clock style={{ width: 11, height: 11 }} />
-                              {dish.time}
-                            </span>
-                            <span
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 5,
-                                padding: "4px 10px",
-                                borderRadius: 999,
-                                background: "hsl(35,30%,95%)",
-                                border: "1px solid hsl(35,20%,88%)",
-                                fontSize: 11,
-                                fontWeight: 600,
-                                color: "hsl(20,20%,44%)",
-                                fontFamily: "var(--font-typewriter)",
-                              }}
-                            >
-                              <Users style={{ width: 11, height: 11 }} />
-                              {dish.servings}
-                            </span>
-                          </div>
-
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 5,
-                              padding: "5px 12px",
-                              borderRadius: 999,
-                              background: "linear-gradient(135deg, hsl(18,82%,54%), hsl(38,88%,54%))",
-                              color: "white",
-                              fontSize: 11,
-                              fontWeight: 700,
-                              fontFamily: "var(--font-display)",
-                              boxShadow: "0 3px 12px hsla(18,75%,44%,0.35)",
-                            }}
-                          >
-                            <Sparkles style={{ width: 11, height: 11 }} />
-                            Cook it
-                          </div>
-                        </div>
-                      </motion.button>
-                    );
-                  })}
-                </div>
-
-                {/* Footer note */}
-                <p
-                  style={{
-                    marginTop: 56,
-                    textAlign: "center",
-                    fontSize: 12,
-                    color: "hsl(20,10%,62%)",
-                    fontFamily: "var(--font-typewriter)",
-                  }}
-                >
-                  Est. 2025 &nbsp;·&nbsp; Powered by TheMealDB &nbsp;·&nbsp; Bon Appétit 🍽️
-                </p>
-              </div>
-            </section>
-          </motion.div>
-        ) : (
+        {generatedRecipe ? (
+          /* ════════════════ RECIPE RESULT VIEW ════════════════ */
           <motion.div
             key="result"
             initial={{ opacity: 0 }}
@@ -868,6 +273,483 @@ export default function Home() {
               isSaving={saveMutation.isPending}
               onReset={handleReset}
             />
+          </motion.div>
+        ) : showVarieties ? (
+          /* ════════════════ VARIETY PICKER VIEW ════════════════ */
+          <motion.div
+            key="varieties"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.35 }}
+            style={{ maxWidth: 1200, margin: "0 auto", padding: "60px 28px 96px" }}
+          >
+            {/* Back + heading */}
+            <button
+              onClick={handleReset}
+              className="mb-8 flex items-center gap-2 text-sm transition-colors"
+              style={{ color: "hsl(20,15%,55%)", fontFamily: "var(--font-typewriter)" }}
+              onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = "hsl(18,75%,42%)")}
+              onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = "hsl(20,15%,55%)")}
+            >
+              <ArrowLeft style={{ width: 14, height: 14 }} /> Back to search
+            </button>
+
+            <div style={{ marginBottom: 40 }}>
+              <p style={{ fontFamily: "var(--font-typewriter)", fontSize: 11, color: "hsl(18,75%,48%)", fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: 10 }}>
+                ✦ Choose a Recipe
+              </p>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(1.7rem,3.5vw,2.6rem)", fontWeight: 800, color: "hsl(20,25%,12%)", letterSpacing: "-0.025em", marginBottom: 8 }}>
+                What kind of{" "}
+                <span style={{ background: "linear-gradient(108deg,hsl(18,82%,50%),hsl(38,95%,52%))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
+                  "{searchQuery}"
+                </span>{" "}
+                would you like?
+              </h2>
+              <p style={{ color: "hsl(20,12%,52%)", fontFamily: "var(--font-body)", fontSize: "1rem" }}>
+                {searchResult.isLoading
+                  ? "Searching across our recipe database…"
+                  : `Found ${searchResult.data?.length ?? 0} options — tap one to get the full recipe`}
+              </p>
+            </div>
+
+            {/* Loading skeleton */}
+            {searchResult.isLoading && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 20 }}>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} style={{ borderRadius: 18, overflow: "hidden", background: "hsl(36,30%,90%)", height: 260, animation: "pulse 1.6s ease-in-out infinite" }} />
+                ))}
+              </div>
+            )}
+
+            {/* Options grid */}
+            {!searchResult.isLoading && searchResult.data && searchResult.data.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 20 }}>
+                {searchResult.data.map((option, i) => {
+                  const isLoading = loadingDish === option.name;
+                  return (
+                    <motion.button
+                      key={option.name}
+                      custom={i}
+                      variants={cardVariants}
+                      initial="hidden"
+                      animate="visible"
+                      whileHover={!loadingDish ? { y: -6, scale: 1.025 } : {}}
+                      whileTap={!loadingDish ? { scale: 0.97 } : {}}
+                      onClick={() => !loadingDish && triggerGenerate(option.name)}
+                      disabled={!!loadingDish}
+                      style={{
+                        background: "white",
+                        border: isLoading ? "2px solid hsl(18,75%,52%)" : "1.5px solid hsl(35,20%,88%)",
+                        borderRadius: 18,
+                        overflow: "hidden",
+                        textAlign: "left",
+                        cursor: loadingDish ? "not-allowed" : "pointer",
+                        opacity: loadingDish && !isLoading ? 0.5 : 1,
+                        boxShadow: isLoading
+                          ? "0 0 0 4px hsla(18,75%,52%,0.15), 0 12px 36px hsla(18,75%,40%,0.18)"
+                          : "0 2px 12px hsla(20,20%,15%,0.07)",
+                        transition: "box-shadow 0.3s, border-color 0.3s, opacity 0.3s",
+                      }}
+                    >
+                      {/* Image — server always provides one; onError is a last-resort safety net */}
+                      <div style={{ position: "relative", paddingTop: "65%", overflow: "hidden", background: "hsl(36,30%,92%)" }}>
+                        <img
+                          src={option.imageUrl ?? `https://loremflickr.com/640/480/${encodeURIComponent(option.name + ",food")}?lock=1`}
+                          alt={option.name}
+                          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.6s ease" }}
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            target.style.display = "none";
+                            const parent = target.parentElement;
+                            if (parent && !parent.querySelector(".img-fallback")) {
+                              const fb = document.createElement("div");
+                              fb.className = "img-fallback";
+                              fb.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:48px;";
+                              fb.textContent = "🍽️";
+                              parent.appendChild(fb);
+                            }
+                          }}
+                        />
+                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(20,14,10,0.65) 0%, transparent 55%)" }} />
+
+                        {isLoading && (
+                          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "hsla(36,40%,97%,0.7)" }}>
+                            <div style={{ width: 48, height: 48, borderRadius: 12, background: "white", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 20px hsla(18,75%,40%,0.2)" }}>
+                              <Loader2 style={{ width: 24, height: 24, color: "hsl(18,75%,48%)" }} className="animate-spin" />
+                            </div>
+                          </div>
+                        )}
+
+                        {option.area && (
+                          <div style={{ position: "absolute", top: 10, left: 10, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(8px)", fontSize: 10, fontWeight: 700, color: "hsl(18,72%,44%)", fontFamily: "var(--font-typewriter)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                            {option.area}
+                          </div>
+                        )}
+
+                        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "10px 12px" }}>
+                          <p style={{ color: "white", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "0.95rem", textShadow: "0 2px 8px rgba(0,0,0,0.7)" }}>
+                            {option.name}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Card footer */}
+                      <div style={{ padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 12, color: "hsl(20,15%,50%)", fontFamily: "var(--font-typewriter)" }}>
+                          {option.category || "Recipe"}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 999, background: "linear-gradient(135deg,hsl(18,82%,54%),hsl(38,88%,54%))", color: "white", fontSize: 10, fontWeight: 700, fontFamily: "var(--font-display)", boxShadow: "0 2px 8px hsla(18,75%,44%,0.3)" }}>
+                          <Sparkles style={{ width: 10, height: 10 }} />
+                          Cook it
+                        </div>
+                      </div>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* No results */}
+            {!searchResult.isLoading && searchResult.data?.length === 0 && (
+              <div style={{ textAlign: "center", padding: "60px 0" }}>
+                <div style={{ fontSize: 56, marginBottom: 20 }}>🔍</div>
+                <h3 style={{ fontFamily: "var(--font-display)", fontSize: "1.5rem", fontWeight: 700, color: "hsl(20,25%,20%)", marginBottom: 12 }}>
+                  No varieties found for "{searchQuery}"
+                </h3>
+                <p style={{ color: "hsl(20,12%,52%)", fontFamily: "var(--font-body)", marginBottom: 24 }}>
+                  Try a different name or generate the recipe directly.
+                </p>
+                <Button
+                  onClick={() => triggerGenerate(searchQuery)}
+                  disabled={!!loadingDish}
+                  style={{ background: "linear-gradient(135deg,hsl(18,82%,54%),hsl(18,75%,44%))", color: "white", border: "none", borderRadius: 12, fontFamily: "var(--font-display)", fontWeight: 700, padding: "12px 28px" }}
+                >
+                  {loadingDish ? <><Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> Generating…</> : <><Sparkles style={{ width: 16, height: 16 }} /> Generate Anyway</>}
+                </Button>
+              </div>
+            )}
+          </motion.div>
+        ) : (
+          /* ════════════════ HOME / HERO VIEW ════════════════ */
+          <motion.div
+            key="input"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.4 }}
+          >
+            {/* ════════════════ HERO SECTION (ESPACIO LA NUBE STYLE) ════════════════ */}
+            <section
+              style={{
+                position: "relative",
+                width: "100%",
+                height: "100vh",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                overflow: "hidden",
+                background: "hsl(20,25%,12%)",
+              }}
+            >
+              {/* ── MASSIVE IMMERSIVE BACKGROUND ── */}
+              <motion.div
+                initial={{ scale: 1.08, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 2.2, ease: "easeOut" }}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 0,
+                }}
+              >
+                <motion.img
+                  src="https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=2400&q=90"
+                  alt="Immersive kitchen"
+                  style={{ width: "100%", height: "115%", objectFit: "cover", marginTop: "-5vh", y: heroImgY }}
+                />
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(15,10,5,0.3) 0%, rgba(15,10,5,0.85) 100%)" }} />
+              </motion.div>
+
+              {/* ── CENTERED HERO CONTENT ── */}
+              <motion.div
+                style={{
+                  position: "relative",
+                  zIndex: 10,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  textAlign: "center",
+                  padding: "0 24px",
+                  maxWidth: 900,
+                  y: heroContentY,
+                  opacity: heroOpacity,
+                }}
+              >
+                {/* Floating Badge */}
+                <motion.div
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4, duration: 1, ease: "easeOut" }}
+                  style={{
+                    padding: "8px 24px",
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,0.08)",
+                    backdropFilter: "blur(12px)",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    marginBottom: 36,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "hsl(35,80%,85%)",
+                      fontFamily: "var(--font-typewriter)",
+                      letterSpacing: "0.2em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    World Kitchen &nbsp;·&nbsp; 50+ Cuisines
+                  </span>
+                </motion.div>
+
+                {/* Massive Headline */}
+                <motion.h1
+                  initial={{ opacity: 0, y: 50 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6, duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    fontSize: "clamp(3.5rem, 8vw, 8rem)",
+                    fontWeight: 800,
+                    lineHeight: 1.05,
+                    letterSpacing: "-0.03em",
+                    color: "white",
+                    marginBottom: 32,
+                    textShadow: "0 10px 40px rgba(0,0,0,0.6)",
+                  }}
+                >
+                  Your Personal<br />
+                  <span style={{ color: "hsl(18,82%,58%)" }}>Fridge Chef</span>
+                </motion.h1>
+
+                {/* Elegant Subtitle */}
+                <motion.p
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.8, duration: 1, ease: "easeOut" }}
+                  style={{
+                    color: "hsl(35,40%,85%)",
+                    fontFamily: "var(--font-body)",
+                    fontSize: "clamp(1.1rem, 2vw, 1.4rem)",
+                    lineHeight: 1.6,
+                    maxWidth: 600,
+                    marginBottom: 56,
+                    fontWeight: 300,
+                  }}
+                >
+                  Search any dish to explore authentic varieties and generate perfect, restaurant-quality recipes instantly.
+                </motion.p>
+
+                {/* Immersive Search Bar */}
+                <motion.div
+                  initial={{ opacity: 0, y: 40 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1.0, duration: 1, ease: "easeOut" }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: "8px 8px 8px 24px",
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,0.95)",
+                    backdropFilter: "blur(20px)",
+                    boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
+                    width: "100%",
+                    maxWidth: 580,
+                  }}
+                >
+                  <Search style={{ width: 22, height: 22, color: "hsl(20,20%,40%)", flexShrink: 0 }} />
+                  <Input
+                    id="dishNameHero"
+                    placeholder="e.g., Ice Cream, Pasta, Biryani…"
+                    className="border-0 bg-transparent focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 flex-1"
+                    style={{
+                      color: "hsl(20,25%,15%)",
+                      fontFamily: "var(--font-body)",
+                      fontSize: "1.1rem",
+                      padding: "12px 0",
+                    }}
+                    value={dishName}
+                    onChange={(e) => setDishName(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                  <Button
+                    size="lg"
+                    onClick={handleGenerate}
+                    disabled={!dishName.trim()}
+                    style={{
+                      background: !dishName.trim()
+                        ? "hsl(35,20%,85%)"
+                        : "hsl(18,82%,54%)",
+                      color: !dishName.trim() ? "hsl(20,15%,55%)" : "white",
+                      border: "none",
+                      borderRadius: 999,
+                      fontFamily: "var(--font-display)",
+                      fontWeight: 700,
+                      fontSize: "1.1rem",
+                      padding: "0 32px",
+                      height: 54,
+                      transition: "all 0.3s",
+                    }}
+                  >
+                    Search
+                  </Button>
+                </motion.div>
+              </motion.div>
+
+              {/* Scroll indicator */}
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.5, duration: 1 }}
+                onClick={scrollToContent}
+                style={{
+                  position: "absolute",
+                  bottom: 40,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 12,
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "rgba(255,255,255,0.7)",
+                  zIndex: 20,
+                }}
+              >
+                <span style={{ fontFamily: "var(--font-typewriter)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.2em" }}>
+                  Scroll to Discover
+                </span>
+                <motion.div animate={{ y: [0, 8, 0] }} transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}>
+                  <ArrowDown style={{ width: 20, height: 20 }} />
+                </motion.div>
+              </motion.button>
+            </section>
+            {/* ════════════════ POPULAR DISHES SECTION ════════════════ */}
+            <section
+              id="discover-section"
+              style={{ position: "relative", background: "hsl(20,25%,10%)", padding: "140px 0 160px", overflow: "hidden" }}
+            >
+              {/* Artistic Background Overlay */}
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  pointerEvents: "none",
+                  background: `
+                    radial-gradient(circle at 15% 30%, hsla(18,85%,55%,0.06) 0%, transparent 45%),
+                    radial-gradient(circle at 85% 70%, hsla(38,95%,58%,0.04) 0%, transparent 45%),
+                    url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M0 38.59l2.83-2.83 1.41 1.41L1.41 40H0v-1.41zM0 1.4l2.83 2.83 1.41-1.41L1.41 0H0v1.41zM38.59 40l-2.83-2.83 1.41-1.41L40 38.59V40h-1.41zM40 1.41l-2.83 2.83-1.41-1.41L38.59 0H40v1.41zM20 18.6l2.83-2.83 1.41 1.41L21.41 20l2.83 2.83-1.41 1.41L20 21.41l-2.83 2.83-1.41-1.41L18.59 20l-2.83-2.83 1.41-1.41L20 18.59z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")
+                  `,
+                }}
+              />
+              <div style={{ position: "relative", maxWidth: 1280, margin: "0 auto", padding: "0 28px", zIndex: 10 }}>
+                <motion.div
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-100px" }}
+                  transition={{ duration: 0.8, ease: "easeOut" }}
+                  style={{ textAlign: "center", marginBottom: 72 }}
+                >
+                  <p style={{ fontFamily: "var(--font-typewriter)", fontSize: 12, color: "hsl(18,75%,55%)", fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 16 }}>
+                    ✦ Trending Now
+                  </p>
+                  <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(2.5rem, 5vw, 4rem)", fontWeight: 800, color: "white", letterSpacing: "-0.03em", marginBottom: 16 }}>
+                    Popular Dishes
+                  </h2>
+                  <p style={{ color: "hsl(20,15%,65%)", fontFamily: "var(--font-body)", fontSize: "1.1rem", maxWidth: 500, margin: "0 auto" }}>
+                    Tap any dish to explore authentic varieties and generate the perfect restaurant-quality recipe.
+                  </p>
+                </motion.div>
+
+                {/* Image card grid — sleek, tight, dark theme layout */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 28, perspective: "1200px" }}>
+                  {DISH_SUGGESTIONS.map((dish, i) => (
+                    <motion.button
+                      key={dish.name}
+                      custom={i}
+                      variants={cardVariants}
+                      initial="hidden"
+                      whileInView="visible"
+                      whileHover="hover"
+                      viewport={{ once: true, margin: "-40px" }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        setDishName(dish.name);
+                        setSearchQuery(dish.name);
+                        setShowVarieties(true);
+                      }}
+                      style={{
+                        background: "rgba(255,255,255,0.03)",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        borderRadius: 20,
+                        overflow: "hidden",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        boxShadow: "0 4px 15px rgba(0,0,0,0.2)",
+                        backdropFilter: "blur(10px)",
+                      }}
+                    >
+                      {/* Image area */}
+                      <div style={{ position: "relative", paddingTop: "70%", overflow: "hidden", background: "hsl(20,25%,15%)" }}>
+                        <motion.img
+                          src={dish.image}
+                          alt={dish.name}
+                          variants={imageVariants}
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(15,10,5,0.8) 0%, transparent 60%)" }} />
+                        {/* Category badge */}
+                        <div style={{ position: "absolute", top: 12, left: 12, padding: "4px 12px", borderRadius: 999, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", fontSize: 10, fontWeight: 700, color: "hsl(18,80%,60%)", fontFamily: "var(--font-typewriter)", textTransform: "uppercase", letterSpacing: "0.08em", border: "1px solid rgba(255,255,255,0.1)" }}>
+                          {dish.category}
+                        </div>
+                        {/* Dish name overlay */}
+                        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "12px 16px" }}>
+                          <p style={{ color: "white", fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "1.1rem", textShadow: "0 2px 8px rgba(0,0,0,0.8)" }}>
+                            {dish.name}
+                          </p>
+                        </div>
+                      </div>
+                      {/* Card footer */}
+                      <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <span style={{ fontSize: 11, color: "hsl(20,15%,65%)", fontFamily: "var(--font-typewriter)" }}>⏱ {dish.time}</span>
+                          <span style={{ fontSize: 11, color: "hsl(20,15%,65%)", fontFamily: "var(--font-typewriter)" }}>👥 {dish.servings}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <Star style={{ width: 12, height: 12, color: "hsl(38,95%,52%)", fill: "hsl(38,95%,52%)" }} />
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "hsl(35,80%,85%)", fontFamily: "var(--font-display)" }}>{dish.rating}</span>
+                        </div>
+                      </div>
+                    </motion.button>
+                  ))}
+                </div>
+
+                <p style={{ marginTop: 80, textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-typewriter)", letterSpacing: "0.05em" }}>
+                  Est. 2025 &nbsp;·&nbsp; Powered by Groq AI &nbsp;·&nbsp; Bon Appétit 🍽️
+                </p>
+              </div>
+            </section>
           </motion.div>
         )}
       </AnimatePresence>

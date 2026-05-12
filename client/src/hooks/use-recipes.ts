@@ -4,6 +4,30 @@ import { type InsertRecipe, type Recipe } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 
+export type DishOption = {
+  name: string;
+  imageUrl?: string | null;
+  category?: string | null;
+  area?: string | null;
+};
+
+export function useSearchRecipes(query: string) {
+  return useQuery({
+    queryKey: ["recipes-search", query],
+    queryFn: async (): Promise<DishOption[]> => {
+      if (!query.trim()) return [];
+      const res = await fetch(`/api/recipes/search?q=${encodeURIComponent(query)}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.options || [];
+    },
+    enabled: !!query.trim(),
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
 // Response type for generation endpoint
 type GeneratedRecipe = z.infer<typeof api.recipes.generate.responses[200]>;
 
